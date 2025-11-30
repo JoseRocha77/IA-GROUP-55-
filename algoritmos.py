@@ -169,3 +169,52 @@ def dfs(estado, cidade, path=None, visited=None):
     path.pop()
     return None
 
+# =============================================================================
+# 4. ALGORITMO GREEDY (GULOSO) - Adaptado de Graph.py
+# =============================================================================
+def greedy(estado_inicial, cidade, funcao_heuristica):
+    """
+    Algoritmo Guloso (Greedy):
+    Escolhe o próximo estado baseado APENAS na heurística (custo estimado até ao fim),
+    ignorando o custo já acumulado.
+    """
+    # open_list e closed_list como sets para performance
+    open_list = {estado_inicial}
+    closed_list = set()
+
+    while len(open_list) > 0:
+        n = None
+        min_h = float('inf')
+
+        # Greedy: Selecionar n com o menor h(n)
+        for v in open_list:
+            h = funcao_heuristica(v, cidade)
+            # Ao contrário do A*, aqui ignoramos o g(n)
+            
+            if h < min_h:
+                min_h = h
+                n = v
+
+        if n is None:
+            print('Caminho não encontrado!')
+            return None
+
+        # Se encontrou a solução
+        if n.is_objetivo():
+            return reconstruir_caminho(n), n.custo_acumulado
+
+        # Passar da open para a closed
+        open_list.remove(n)
+        closed_list.add(n)
+
+        # Gerar sucessores
+        sucessores = n.gera_sucessores(cidade)
+
+        for filho in sucessores:
+            filho.pai = n
+            
+            # Se não foi visitado nem está na fila, adiciona
+            if filho not in open_list and filho not in closed_list:
+                open_list.add(filho)
+                
+    return None

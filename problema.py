@@ -52,7 +52,7 @@ class Estado:
         else:
             custo_operacional = distancia_km * CUSTO_KM_COMBUSTAO
 
-        # Custo do tempo "monetizado" (opcional, ou usar apenas o valor bruto do tempo)
+        # Custo do tempo "monetizado" 
         custo_operacional += (tempo_min * CUSTO_MINUTO)
 
         # 2. Custo Temporal (Direto)
@@ -148,15 +148,18 @@ class Estado:
 
                 # Custo: Tempo de recarga (ex: 1 min por cada 10km)
                 tempo_recarga = math.ceil(energia_recuperada / 10)
-                # Custo financeiro da energia (ex: 0.5€ fixo + energia)
+                
+                # Custo financeiro (ex: 0.5€ fixo + energia)
                 custo_energia = 0.5 + (energia_recuperada * 0.05)
 
-                # Atualizar custo acumulado (aqui fazemos manual pois não é movimento)
+                # Atualizar custo acumulado
                 custo_ponderado = (ALPHA * custo_energia) + (BETA * tempo_recarga)
 
                 novo_estado.custo_acumulado += custo_ponderado
                 novo_estado.tempo_atual += tempo_recarga
-                novo_estado.acao_geradora = f"[{v_novo.id}] Recarregou {energia_recuperada}km em {v_novo.local}"
+                
+                termo = "Recarregou" if veiculo.tipo == "eletrico" else "Abasteceu"
+                novo_estado.acao_geradora = f"[{v_novo.id}] {termo} {energia_recuperada}km em {v_novo.local}"
 
                 sucessores.append(novo_estado)
 

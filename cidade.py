@@ -79,6 +79,3 @@ cidade.add_edge("Baixa", "Super_Charger", 3, 6)
 cidade.add_edge("Baixa", "Estacao_Comboio", 4, 8)
 cidade.add_edge("Estacao_Comboio", "Aeroporto", 40, 30) # Via rápida: muitos km, tempo razoável
 cidade.add_edge("Aeroporto", "Super_Charger", 35, 25) 
-
-print("Vizinhos da Baixa:", list(cidade.get_neighbors("Baixa")))
-print("Heurística (linha reta) Baixa -> Aeroporto:", cidade.get_heuristic("Baixa", "Aeroporto"))
