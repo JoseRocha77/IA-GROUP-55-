@@ -1,25 +1,23 @@
+import heapq
 from queue import Queue
+
 
 def heuristica_taxi(estado, cidade):
     """
     Estima o custo restante até ao objetivo.
-    Lógica:
-    1. Para cada passageiro não entregue, temos de percorrer pelo menos 
-       a distância da sua origem ao destino.
-    2. Se o passageiro ainda não foi apanhado, somar distância do táxi mais perto até ele.
+    1. Soma distância de cada passageiro pendente (Origem -> Destino).
+    2. Soma distância do táxi livre mais próximo até ao passageiro.
     """
     custo_estimado = 0
     
-    # 1. Pedidos que ainda estão à espera (na rua)
+    # 1. Pedidos pendentes
     for pedido in estado.pedidos_pendentes:
-        # Distância mínima da viagem (Origem -> Destino)
         dist_viagem = cidade.get_heuristic(pedido.origem, pedido.destino)
         custo_estimado += dist_viagem
         
-        # Distância do táxi mais próximo até à origem do pedido
         min_dist_taxi = float('inf')
         for v in estado.veiculos:
-            if not v.ocupado: # Só conta táxis livres
+            if not v.ocupado:
                 d = cidade.get_heuristic(v.local, pedido.origem)
                 if d < min_dist_taxi:
                     min_dist_taxi = d
@@ -27,23 +25,17 @@ def heuristica_taxi(estado, cidade):
         if min_dist_taxi != float('inf'):
             custo_estimado += min_dist_taxi
 
-    # 2. Pedidos que já estão no carro (a meio da viagem)
+    # 2. Pedidos a bordo
     for v in estado.veiculos:
         if v.ocupado and v.passageiros_a_bordo:
             pedido = v.passageiros_a_bordo[0]
-            # Falta percorrer: Local Atual do Carro -> Destino do Cliente
             dist_restante = cidade.get_heuristic(v.local, pedido.destino)
             custo_estimado += dist_restante
 
     return custo_estimado
 
-
-
 def reconstruir_caminho(estado_final):
-    """
-    Percorre os 'pais' de trás para a frente para reconstruir a história.
-    Igual ao 'reconst_path' do teu código original.
-    """
+    """Percorre os 'pais' de trás para a frente."""
     caminho = []
     atual = estado_final
     while atual is not None:
@@ -52,10 +44,10 @@ def reconstruir_caminho(estado_final):
     return list(reversed(caminho))
 
 # =============================================================================
-# 1. PESQUISA EM LARGURA (BFS) 
+# 1. PESQUISA EM LARGURA (BFS)
 # =============================================================================
 def bfs(estado_inicial, cidade):
-    # No teu código original: visited = set() e fila = Queue()
+    # BFS usa Queue (FIFO), não precisa de Heap
     visited = set()
     fila = Queue()
 
@@ -65,156 +57,146 @@ def bfs(estado_inicial, cidade):
     while not fila.empty():
         estado_atual = fila.get()
 
-        # Teste Objetivo
         if estado_atual.is_objetivo():
             return reconstruir_caminho(estado_atual), estado_atual.custo_acumulado
 
-        # Gerar sucessores
-        sucessores = estado_atual.gera_sucessores(cidade)
-        
-        for filho in sucessores:
+        for filho in estado_atual.gera_sucessores(cidade):
             filho.pai = estado_atual
             if filho not in visited:
                 fila.put(filho)
                 visited.add(filho)
-                # O 'pai' já foi definido dentro do gera_sucessores/Estado, 
-                # por isso não precisamos do dicionário 'parent' aqui.
 
     return None
 
 # =============================================================================
-# 2. ALGORITMO A* (A-Star)
-# =============================================================================
-def a_star(estado_inicial, cidade, funcao_heuristica):
-    # open_list e closed_list como no teu código
-    open_list = {estado_inicial}
-    closed_list = set()
-
-
-    while len(open_list) > 0:
-        
-        # --- Encontrar n com o menor f(n) ---
-        n = None
-        min_f = float('inf')
-
-        for v in open_list:
-            # f(n) = g(n) + h(n)
-            h = funcao_heuristica(v, cidade)
-            g = v.custo_acumulado
-            f = g + h
-            
-            if f < min_f:
-                min_f = f
-                n = v
-        # -------------------------------------------
-
-        if n is None:
-            print('Caminho não encontrado!')
-            return None
-
-        # Se encontrou a solução
-        if n.is_objetivo():
-            return reconstruir_caminho(n), n.custo_acumulado
-
-        # Remover n da open e passar para closed
-        open_list.remove(n)
-        closed_list.add(n)
-
-        # Gerar sucessores de n
-        sucessores = n.gera_sucessores(cidade)
-
-        for filho in sucessores:
-            filho.pai = n
-            # Se já visitámos este estado exato com um custo menor ou igual, ignoramos
-            if filho in closed_list:
-                continue
-
-            # Se o filho não está na open_list, adicionamos 
-            if filho not in open_list:
-                open_list.add(filho)
-                # O pai já vem definido do 'gera_sucessores'
-
-    return None
-
-# =============================================================================
-# 3. PESQUISA EM PROFUNDIDADE (DFS) 
+# 2. PESQUISA EM PROFUNDIDADE (DFS)
 # =============================================================================
 def dfs(estado, cidade, path=None, visited=None):
-    """
-    Implementação recursiva igual à do Graph.py, mas para Estados.
-    """
-    if path is None:
-        path = []
-    if visited is None:
-        visited = set()
+    if path is None: path = []
+    if visited is None: visited = set()
 
-    # Adicionar estado atual ao caminho e aos visitados
     path.append(estado)
     visited.add(estado)
 
-    # Teste de Objetivo
     if estado.is_objetivo():
         return path, estado.custo_acumulado
 
-    # Gerar filhos
+    # Otimização: ordenar sucessores pode ajudar o DFS a achar mais rápido (opcional)
     sucessores = estado.gera_sucessores(cidade)
     
     for filho in sucessores:
         if filho not in visited:
+            filho.pai = estado 
             resultado = dfs(filho, cidade, path, visited)
             if resultado is not None:
                 return resultado
 
-    # Backtracking: Se não encontrou nada por aqui, remove do caminho
     path.pop()
     return None
 
 # =============================================================================
-# 4. ALGORITMO GREEDY (GULOSO) - Adaptado de Graph.py
+# 3. ALGORITMO A* (A-Star) - OTIMIZADO COM HEAPQ
 # =============================================================================
-def greedy(estado_inicial, cidade, funcao_heuristica):
-    """
-    Algoritmo Guloso (Greedy):
-    Escolhe o próximo estado baseado APENAS na heurística (custo estimado até ao fim),
-    ignorando o custo já acumulado.
-    """
-    # open_list e closed_list como sets para performance
-    open_list = {estado_inicial}
+def a_star(estado_inicial, cidade, funcao_heuristica):
+    # A PriorityQueue (heap) ordena automaticamente pelo primeiro elemento do tuple
+    # Guardamos: (f, contador, estado)
+    # O 'contador' serve apenas para desempatar se f for igual, evitando erro de comparação
+    
+    count = 0
+    open_list = [] # A nossa Heap
+    
+    # Calcular f inicial
+    h = funcao_heuristica(estado_inicial, cidade)
+    g = estado_inicial.custo_acumulado
+    f = g + h
+    
+    # Push inicial: (f, count, estado)
+    heapq.heappush(open_list, (f, count, estado_inicial))
+    
+    # Dicionários para acesso rápido (O(1))
+    open_set_hashes = {estado_inicial} 
     closed_list = set()
+    
+    # Dicionário para guardar o melhor g encontrado até agora para cada estado
+    # Isto é CRUCIAL para a performance do A*
+    g_score = {estado_inicial: g}
 
-    while len(open_list) > 0:
-        n = None
-        min_h = float('inf')
+    while open_list:
+        # Pop do estado com MENOR f (Instantâneo O(1))
+        f_atual, _, n = heapq.heappop(open_list)
+        open_set_hashes.remove(n)
 
-        # Greedy: Selecionar n com o menor h(n)
-        for v in open_list:
-            h = funcao_heuristica(v, cidade)
-            # Ao contrário do A*, aqui ignoramos o g(n)
-            
-            if h < min_h:
-                min_h = h
-                n = v
-
-        if n is None:
-            print('Caminho não encontrado!')
-            return None
-
-        # Se encontrou a solução
         if n.is_objetivo():
             return reconstruir_caminho(n), n.custo_acumulado
 
-        # Passar da open para a closed
-        open_list.remove(n)
         closed_list.add(n)
 
-        # Gerar sucessores
-        sucessores = n.gera_sucessores(cidade)
-
-        for filho in sucessores:
+        for filho in n.gera_sucessores(cidade):
             filho.pai = n
             
-            # Se não foi visitado nem está na fila, adiciona
-            if filho not in open_list and filho not in closed_list:
-                open_list.add(filho)
+            # Se já fechámos este nó, ignorar
+            if filho in closed_list:
+                continue
+
+            # Calcular novo g
+            new_g = filho.custo_acumulado
+            
+            # Se já vimos este estado e o caminho novo não é melhor, ignorar
+            if filho in g_score and new_g >= g_score[filho]:
+                continue
+            
+            # Se é um caminho melhor (ou novo), registamos
+            g_score[filho] = new_g
+            h = funcao_heuristica(filho, cidade)
+            f = new_g + h
+            
+            # Adicionar à Heap se não estiver lá
+            if filho not in open_set_hashes:
+                count += 1
+                heapq.heappush(open_list, (f, count, filho))
+                open_set_hashes.add(filho)
+
+    return None
+
+# =============================================================================
+# 4. ALGORITMO GREEDY (GULOSO) - OTIMIZADO COM HEAPQ
+# =============================================================================
+def greedy(estado_inicial, cidade, funcao_heuristica):
+    """
+    Versão Otimizada com Heap.
+    Ordena apenas pelo h(n).
+    """
+    count = 0
+    open_list = []
+    
+    # Calcular h inicial
+    h = funcao_heuristica(estado_inicial, cidade)
+    heapq.heappush(open_list, (h, count, estado_inicial))
+    
+    open_set_hashes = {estado_inicial}
+    closed_list = set()
+
+    while open_list:
+        # Pop do menor h
+        h_atual, _, n = heapq.heappop(open_list)
+        open_set_hashes.remove(n)
+
+        if n.is_objetivo():
+            return reconstruir_caminho(n), n.custo_acumulado
+
+        closed_list.add(n)
+
+        for filho in n.gera_sucessores(cidade):
+            filho.pai = n
+            
+            if filho in closed_list:
+                continue
+            
+            if filho not in open_set_hashes:
+                # Calcular h para ordenar
+                h = funcao_heuristica(filho, cidade)
+                count += 1
+                heapq.heappush(open_list, (h, count, filho))
+                open_set_hashes.add(filho)
                 
     return None

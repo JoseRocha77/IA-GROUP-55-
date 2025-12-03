@@ -3,6 +3,18 @@ from cidade import Cidade
 from modelos import Veiculo, Pedido
 from problema import Estado
 import algoritmos 
+import multiprocessing
+
+def correr_algoritmo_wrapper(args):
+    
+    nome, func, estado, cidade, extra = args
+    start = time.time()
+    if extra:
+        res = func(estado, cidade, extra)
+    else:
+        res = func(estado, cidade)
+    duracao = time.time() - start
+    return (nome, res, duracao)
 
 def imprimir_resultado(nome_algoritmo, resultado, tempo_execucao):
     """Função auxiliar para mostrar os resultados de forma bonita no terminal"""
@@ -71,6 +83,7 @@ def main():
         print("2. Executar DFS (Profundidade)")
         print("3. Executar A* (A-Star)")
         print("4. Executar Greedy (Guloso)")
+        print("5. Executar TODOS os algoritmos em paralelo")
         print("0. Sair")
         
         opcao = input("👉 Opção: ")
@@ -92,6 +105,24 @@ def main():
             # O Greedy usa a mesma heurística que o A*
             res = algoritmos.greedy(estado_inicial, cidade, algoritmos.heuristica_taxi)
             imprimir_resultado("Greedy", res, time.time() - start)
+            
+        elif opcao == "5":
+      
+            tarefas = [
+                ("BFS", algoritmos.bfs, estado_inicial, cidade, None),
+                ("Greedy", algoritmos.greedy, estado_inicial, cidade, algoritmos.heuristica_taxi),
+                ("A*", algoritmos.a_star, estado_inicial, cidade, algoritmos.heuristica_taxi)
+                # DFS em paralelo aqui pode estourar memória se for infinito
+            ]
+            
+            # Usar todos os cores do CPU
+            with multiprocessing.Pool(processes=3) as pool:
+                resultados = pool.map(correr_algoritmo_wrapper, tarefas)
+            
+            # Mostrar tudo
+            for nome, res, duracao in resultados:
+                imprimir_resultado(nome, res, duracao)
+                
         elif opcao == "0":
             break
         else:
