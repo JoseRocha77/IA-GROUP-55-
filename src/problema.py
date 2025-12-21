@@ -2,8 +2,8 @@ import math
 from modelos import Veiculo, Pedido
 
 # --- CONFIGURAÇÃO DE CUSTOS E PESOS ---
-ALPHA = 0.4  # Peso do Dinheiro
-BETA = 0.4   # Peso do Tempo
+ALPHA = 0.1  # Peso do Dinheiro
+BETA = 0.8   # Peso do Tempo
 GAMMA = 0.2  # Peso do CO2
 
 # Custos Unitários
