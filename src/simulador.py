@@ -1,9 +1,10 @@
 import time
 import random
+import threading  # <--- IMPORTANTE: Importar a biblioteca de threads
 from modelos import Pedido
 from problema import Estado
 
-# Importar constantes de custo do problema para manter consistência
+# Importar constantes de custo
 from problema import CUSTO_KM_ELETRICO, CUSTO_KM_COMBUSTAO, CUSTO_MINUTO
 import algoritmos
 
@@ -14,41 +15,43 @@ class Simulador:
         self.frota = frota_inicial
         self.algoritmo = algoritmo_escolhido
 
-        self.tempo_atual = 0  # Minutos simulados
+        self.tempo_atual = 0
         self.pedidos_pendentes = []
         self.pedidos_ativos = []
         self.pedidos_concluidos = []
         self.id_counter = 100
 
-        # Inicializar memória dos veículos
         for v in self.frota:
             v.rota_planeada = []
             v.ocupado_ate = 0
 
-        # Estatísticas
         self.historico_estados = []
         self.total_dinheiro_gasto = 0.0
         self.tempo_cpu_total = 0.0
 
     def executar_simulacao(self, segundos_reais_limite, probabilidade_pedido=0.1):
-        """
-        Executa a simulação até que o tempo REAL (do relógio de parede) se esgote.
-        """
-        print(f"⏱️  INICIAR SIMULAÇÃO (Limite: {segundos_reais_limite} segundos reais)...")
-        print("    (A tentar processar o máximo de minutos simulados possível...)")
+        print(f"⏱️  INICIAR SIMULAÇÃO (Limite: {segundos_reais_limite}s)...")
+        print("    (A usar THREADS para controlar o tempo rigorosamente)")
 
         start_real_global = time.time()
+        # Calculamos o momento exato em que a simulação TEM de acabar
+        deadline = start_real_global + segundos_reais_limite
+
         self._gravar_snapshot()
 
-        # LOOP PRINCIPAL: Corre enquanto não passar o tempo limite
-        while (time.time() - start_real_global) < segundos_reais_limite:
-            self.tempo_atual += 1  # Avança 1 minuto no "mundo do jogo"
+        # O loop verifica se ainda temos tempo antes do deadline
+        while time.time() < deadline:
+            self.tempo_atual += 1
 
             self._gerar_novos_eventos(probabilidade_pedido)
             self._atualizar_frota()
 
             if self._precisa_de_intervencao():
-                self._atribuir_tarefas_com_ia()
+                # Passamos o tempo restante para a função saber quanto tempo tem
+                tempo_restante = deadline - time.time()
+                # Só chama a IA se houver pelo menos 0.1s de tempo útil
+                if tempo_restante > 0.1:
+                    self._atribuir_tarefas_com_ia_threaded(tempo_restante)
 
             self._gravar_snapshot()
 
@@ -59,170 +62,128 @@ class Simulador:
         return self.historico_estados
 
     def _gravar_snapshot(self):
-        """Guarda o estado atual para ver no gráfico depois."""
         frota_copia = [v.clone() for v in self.frota]
         snapshot = Estado(frota_copia, list(self.pedidos_pendentes), self.tempo_atual)
-
-        # Guardar totais para o gráfico ler
         snapshot.total_dinheiro = self.total_dinheiro_gasto
-        # O CO2 é calculado na hora, mas podíamos guardar aqui também
-
-        snapshot.acao_geradora = f"Minuto Simulado: {self.tempo_atual}"
+        snapshot.acao_geradora = f"Min: {self.tempo_atual}"
         if len(self.pedidos_pendentes) > 0:
-            snapshot.acao_geradora += f" | {len(self.pedidos_pendentes)} Pendentes"
-
+            snapshot.acao_geradora += f" | {len(self.pedidos_pendentes)} Pend"
         self.historico_estados.append(snapshot)
 
     def _gerar_novos_eventos(self, probabilidade):
         if random.random() < probabilidade:
             self.id_counter += 1
-            origem = self.cidade.get_local_aleatorio()
-            destino = self.cidade.get_local_aleatorio()
-            while destino == origem:
-                destino = self.cidade.get_local_aleatorio()
-
-            novo_pedido = Pedido(
-                self.id_counter, origem, destino,
-                random.randint(1, 4),
-                prazo=self.tempo_atual + 60,
-                tempo_criacao=self.tempo_atual
-            )
-            self.pedidos_pendentes.append(novo_pedido)
-            # print(f"[{self.tempo_atual}m] 🆕 PEDIDO {novo_pedido}")
+            o = self.cidade.get_local_aleatorio()
+            d = self.cidade.get_local_aleatorio()
+            while d == o: d = self.cidade.get_local_aleatorio()
+            self.pedidos_pendentes.append(Pedido(self.id_counter, o, d, 1, self.tempo_atual + 60, self.tempo_atual))
 
     def _atualizar_frota(self):
         for i, v in enumerate(self.frota):
-            # Custo fixo por minuto (salário/manutenção)
             self.total_dinheiro_gasto += CUSTO_MINUTO
-
-            if v.ocupado_ate > self.tempo_atual:
-                continue
-
+            if v.ocupado_ate > self.tempo_atual: continue
             if v.rota_planeada:
-                proximo_estado = v.rota_planeada.pop(0)
-                self._aplicar_transicao_veiculo(v, proximo_estado.veiculos[i], proximo_estado)
+                prox = v.rota_planeada.pop(0)
+                self._aplicar_transicao_veiculo(v, prox.veiculos[i], prox)
 
     def _precisa_de_intervencao(self):
-        veiculos_livres = [v for v in self.frota if not v.rota_planeada and v.ocupado_ate <= self.tempo_atual]
-        return len(self.pedidos_pendentes) > 0 and len(veiculos_livres) > 0
+        livres = [v for v in self.frota if not v.rota_planeada and v.ocupado_ate <= self.tempo_atual]
+        return len(self.pedidos_pendentes) > 0 and len(livres) > 0
 
-    def _atribuir_tarefas_com_ia(self):
+    # --- LÓGICA DE THREADING ---
+    def _atribuir_tarefas_com_ia_threaded(self, tempo_limite_thread):
+        """
+        Executa a IA numa thread separada.
+        Se a thread demorar mais que 'tempo_limite_thread', o simulador avança sem esperar.
+        """
         estado_atual = Estado(self.frota, self.pedidos_pendentes, tempo_atual=self.tempo_atual)
 
-        t_start = time.time()
+        # Recipiente para guardar o resultado (lista é mutável, funciona como ponteiro)
+        resultado_container = [None]
 
-        # Chama o algoritmo configurado
-        if self.algoritmo is None:
-            # Fallback para Greedy se nada for escolhido
-            resultado = algoritmos.greedy(estado_atual, self.cidade, algoritmos.heuristica_taxi)
-        elif self.algoritmo in [algoritmos.bfs, algoritmos.dfs]:
-            # BFS/DFS não usam heurística nos argumentos
-            resultado = self.algoritmo(estado_atual, self.cidade)
-        else:
-            # A* e Greedy usam heurística
-            resultado = self.algoritmo(estado_atual, self.cidade, algoritmos.heuristica_taxi)
+        def target_ia():
+            """Função interna que corre na Thread"""
+            t0 = time.time()
+            if self.algoritmo in [algoritmos.bfs, algoritmos.dfs]:
+                res = self.algoritmo(estado_atual, self.cidade)
+            else:
+                res = self.algoritmo(estado_atual, self.cidade, algoritmos.heuristica_taxi)
+            self.tempo_cpu_total += (time.time() - t0)
+            resultado_container[0] = res
 
-        t_end = time.time()
-        self.tempo_cpu_total += (t_end - t_start)
+        # 1. Criar a Thread
+        thread_ia = threading.Thread(target=target_ia)
 
-        if not resultado:
+        # 2. Iniciar a Thread (começa a processar em paralelo)
+        thread_ia.start()
+
+        # 3. Esperar pela Thread, mas SÓ até o tempo limite acabar
+        # Se tempo_limite_thread for 2s e a IA demorar 10s, o join solta aos 2s.
+        thread_ia.join(timeout=tempo_limite_thread)
+
+        if thread_ia.is_alive():
+            # Se a thread ainda está viva, significa que o tempo acabou!
+            # Ignoramos o resultado desta vez para cumprir o prazo.
             return
+
+        # Se chegou aqui, a IA terminou a tempo
+        resultado = resultado_container[0]
+        if not resultado: return
 
         caminho_completo, _ = resultado
+        for v in self.frota: v.rota_planeada = []
 
-        # Limpar rotas antigas
-        for v in self.frota:
-            v.rota_planeada = []
-
-        # Atribuir novas rotas
         for k in range(1, len(caminho_completo)):
-            estado_futuro = caminho_completo[k]
+            est_futuro = caminho_completo[k]
             for i, v_real in enumerate(self.frota):
-                v_sim = estado_futuro.veiculos[i]
-                v_anterior = caminho_completo[k - 1].veiculos[i]
+                v_sim = est_futuro.veiculos[i]
+                v_ant = caminho_completo[k - 1].veiculos[i]
+                if str(v_sim) != str(v_ant) or (v_real.rota_planeada and v_real.rota_planeada[-1] != est_futuro):
+                    v_real.rota_planeada.append(est_futuro)
 
-                # Se o carro mudou de estado ou local, adiciona ao plano
-                if str(v_sim) != str(v_anterior) or (
-                        v_real.rota_planeada and v_real.rota_planeada[-1] != estado_futuro):
-                    v_real.rota_planeada.append(estado_futuro)
-
-        # print(f"[{self.tempo_atual}m] 🧠 IA Recalculou (CPU: {t_end - t_start:.4f}s)")
-
-    def _aplicar_transicao_veiculo(self, v_real, v_simulado, estado_novo):
-        duracao = max(1, int(estado_novo.tempo_atual - self.tempo_atual))
+    def _aplicar_transicao_veiculo(self, v_real, v_sim, est_novo):
+        duracao = max(1, int(est_novo.tempo_atual - self.tempo_atual))
         v_real.ocupado_ate = self.tempo_atual + duracao
 
-        # Calcular custos baseados na diferença de autonomia
-        diff_autonomia = v_real.autonomia_atual - v_simulado.autonomia_atual
+        diff = v_real.autonomia_atual - v_sim.autonomia_atual
+        if diff > 0:
+            custo = diff * (CUSTO_KM_ELETRICO if v_real.tipo == "eletrico" else CUSTO_KM_COMBUSTAO)
+            self.total_dinheiro_gasto += custo
+        elif diff < 0:
+            self.total_dinheiro_gasto += abs(diff) * 0.10
 
-        if diff_autonomia > 0:
-            # Gastou combustível
-            km = diff_autonomia
-            preco = CUSTO_KM_ELETRICO if v_real.tipo == "eletrico" else CUSTO_KM_COMBUSTAO
-            self.total_dinheiro_gasto += km * preco
-        elif diff_autonomia < 0:
-            # Carregou (recuperou autonomia)
-            recuperado = abs(diff_autonomia)
-            self.total_dinheiro_gasto += recuperado * 0.10  # Custo recarga
+        v_real.local = v_sim.local
+        v_real.autonomia_atual = v_sim.autonomia_atual
 
-        # Atualizar estado físico
-        v_real.local = v_simulado.local
-        v_real.autonomia_atual = v_simulado.autonomia_atual
-
-        # PICKUP (Recolha)
-        if v_simulado.passageiros_a_bordo and not v_real.passageiros_a_bordo:
-            pedido_sim = v_simulado.passageiros_a_bordo[0]
-            # Encontrar o objeto pedido real correspondente
-            pedido_real = next((p for p in self.pedidos_pendentes if p.id == pedido_sim.id), None)
-
-            if pedido_real:
-                v_real.ocupado = True
-                v_real.passageiros_a_bordo.append(pedido_real)
-                self.pedidos_pendentes.remove(pedido_real)
-                self.pedidos_ativos.append(pedido_real)
-                self.total_dinheiro_gasto += 0.50  # Taxa de recolha
-
-        # DROPOFF (Entrega)
-        elif not v_simulado.passageiros_a_bordo and v_real.passageiros_a_bordo:
-            pedido_real = v_real.passageiros_a_bordo[0]
-            v_real.ocupado = False
+        if v_sim.passageiros_a_bordo and not v_real.passageiros_a_bordo:
+            pid = v_sim.passageiros_a_bordo[0].id
+            preal = next((p for p in self.pedidos_pendentes if p.id == pid), None)
+            if preal:
+                v_real.ocupado = True;
+                v_real.passageiros_a_bordo.append(preal)
+                self.pedidos_pendentes.remove(preal);
+                self.pedidos_ativos.append(preal)
+                self.total_dinheiro_gasto += 0.50
+        elif not v_sim.passageiros_a_bordo and v_real.passageiros_a_bordo:
+            preal = v_real.passageiros_a_bordo[0]
+            v_real.ocupado = False;
             v_real.passageiros_a_bordo = []
-
-            if pedido_real in self.pedidos_ativos:
-                self.pedidos_ativos.remove(pedido_real)
-
-            pedido_real.tempo_conclusao = self.tempo_atual
-            self.pedidos_concluidos.append(pedido_real)
+            if preal in self.pedidos_ativos: self.pedidos_ativos.remove(preal)
+            preal.tempo_conclusao = self.tempo_atual;
+            self.pedidos_concluidos.append(preal)
 
     def _imprimir_estatisticas(self, tempo_real_execucao):
-        total_pedidos = len(self.pedidos_concluidos) + len(self.pedidos_pendentes) + len(self.pedidos_ativos)
-        if total_pedidos == 0:
-            print("Nenhum pedido gerado.")
-            return
+        total = len(self.pedidos_concluidos) + len(self.pedidos_pendentes) + len(self.pedidos_ativos)
+        if total == 0: print("Sem dados."); return
 
-        print("\n" + "=" * 50)
-        print("📊 RELATÓRIO DE PERFORMANCE (Tempo Real)")
-        print("=" * 50)
-
-        # Métricas de Velocidade
-        mins_por_segundo = self.tempo_atual / (tempo_real_execucao + 0.001)
-
-        print(f"⏱️  Tempo Limite Definido:  ~{int(tempo_real_execucao)}s")
-        print(f"🔄 Minutos Simulados:      {self.tempo_atual} min")
-        print(f"🚀 Velocidade da IA:       {mins_por_segundo:.2f} min/segundo")
-        print(f"🧠 Tempo Total CPU (IA):   {self.tempo_cpu_total:.4f} s")
-        print("-" * 50)
-
-        # Métricas Financeiras
-        print(f"💵 Custo Total Operação:   {self.total_dinheiro_gasto:.2f} €")
-
-        # Métricas de Serviço
-        taxa = (len(self.pedidos_concluidos) / total_pedidos) * 100
-        print(f"📦 Pedidos Gerados:        {total_pedidos}")
-        print(f"✅ Pedidos Concluídos:     {len(self.pedidos_concluidos)} ({taxa:.1f}%)")
-
+        sim_speed = self.tempo_atual / (tempo_real_execucao + 0.001)
+        print(f"📊 RESULTADOS (Threaded Benchmark)")
+        print(f"⏱️  Tempo Decorrido:    {tempo_real_execucao:.2f}s")
+        print(f"⚡ Minutos Simulados:  {self.tempo_atual} min")
+        print(f"🚀 Velocidade:         {sim_speed:.1f} min/s")
+        print(f"💵 Custo Total:        {self.total_dinheiro_gasto:.2f} €")
+        print(f"📦 Pedidos: {total} | Concluídos: {len(self.pedidos_concluidos)}")
         if self.pedidos_concluidos:
             tempos = [p.get_tempo_espera() for p in self.pedidos_concluidos]
-            print(f"🕒 Tempo Espera Médio:     {sum(tempos) / len(tempos):.1f} min")
-
+            print(f"🕒 Tempo Espera Médio: {sum(tempos) / len(tempos):.1f} min")
         print("=" * 50)
