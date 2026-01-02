@@ -186,23 +186,37 @@ class Simulador:
             self.pedidos_concluidos.append(preal)
 
     def _imprimir_estatisticas(self, tempo_real_execucao):
-        total = len(self.pedidos_concluidos) + len(self.pedidos_pendentes) + len(self.pedidos_ativos) + len(
-            self.pedidos_falhados)
+        total = len(self.pedidos_concluidos) + len(self.pedidos_pendentes) + len(self.pedidos_ativos) + len(self.pedidos_falhados)
         if total == 0: print("Sem dados."); return
+
         km_totais = self.km_total_ocupado + self.km_total_vazio
         taxa_ocupacao = (self.km_total_ocupado / km_totais * 100) if km_totais > 0 else 0
         sim_speed = self.tempo_atual / (tempo_real_execucao + 0.001)
+        
+        
+        pedidos_eco = sum(1 for p in self.pedidos_concluidos if getattr(p, 'veiculo_eco', False))
+
         print(f"📊 RESULTADOS (Threaded Benchmark)")
         print(f"⏱️  Tempo Decorrido:    {tempo_real_execucao:.2f}s")
         print(f"⚡ Minutos Simulados:  {self.tempo_atual} min")
         print(f"🚀 Velocidade:         {sim_speed:.1f} min/s")
         print(f"💵 Custo Total:        {self.total_dinheiro_gasto:.2f} €")
+        
         print(f"📦 Pedidos: {total}")
         print(f"   ✅ Concluídos:      {len(self.pedidos_concluidos)}")
         print(f"   ❌ Falhados:        {len(self.pedidos_falhados)}")
-        print(f"   🌿 Pedidos Eco:     {len([p for p in self.pedidos_concluidos if p.prefere_eletrico])}")
+        
+        print(f"   🚕 Em Curso:        {len(self.pedidos_ativos)}")
+        print(f"   ⏳ Pendentes:       {len(self.pedidos_pendentes)}")
+        
+        print(f"   🌿 Pedidos Eco:     {pedidos_eco}")
         print("-" * 30)
+        
         print(f"📉 Km em Vazio:        {self.km_total_vazio:.1f} km")
         print(f"📈 Km com Cliente:     {self.km_total_ocupado:.1f} km")
         print(f"🚕 Taxa Eficiência:    {taxa_ocupacao:.1f}%")
+
+        if self.pedidos_concluidos:
+            tempos = [p.get_tempo_espera() for p in self.pedidos_concluidos]
+            print(f"🕒 Tempo Espera Médio: {sum(tempos) / len(tempos):.1f} min")
         print("=" * 50)

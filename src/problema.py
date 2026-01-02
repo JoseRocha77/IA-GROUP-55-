@@ -57,14 +57,22 @@ class Estado:
         sucessores = []
 
         for i, veiculo in enumerate(self.veiculos):
-            # 1. RECOLHER
+            # --- 1. RECOLHER ---
             if not veiculo.ocupado:
                 for pedido in self.pedidos_pendentes:
                     if veiculo.local == pedido.origem:
+                        # Verificação de Prazo
                         if self.tempo_atual > pedido.prazo:
                             continue
 
+                        # Calcula dist direta
+                        dist_estimada = cidade.get_heuristic(pedido.origem, pedido.destino)
+                        # Se não tiver bateria para a viagem + 10%, não aceita
+                        if veiculo.autonomia_atual < dist_estimada * 1.1:
+                            continue 
+                       
                         ns = self.copia_segura()
+                        
                         ns.alerta = None
                         v_novo = ns.veiculos[i]
 
