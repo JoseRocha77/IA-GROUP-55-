@@ -1,19 +1,18 @@
 import math
 from modelos import Veiculo, Pedido
 
-# --- CONFIGURAÇÃO DE CUSTOS E PESOS ---
-ALPHA = 0.1  # Peso do Dinheiro
-BETA = 0.9  # Peso do Tempo
-GAMMA = 0.05  # Peso do CO2
+ALPHA = 0.4
+BETA = 0.5
+GAMMA = 0.05
 
-# Custos Unitários
 CUSTO_KM_ELETRICO = 0.05
-CUSTO_KM_COMBUSTAO = 0.15
+CUSTO_KM_COMBUSTAO = 0.10
 CUSTO_MINUTO = 0.50
 EMISSAO_CO2_KM_ICE = 120
 EMISSAO_CO2_KM_EV = 0
 
 PENALIDADE_CLIENTE_INSATISFEITO = 10.0
+PENALIDADE_RISCO_BATERIA = 50.0
 
 
 class Estado:
@@ -57,22 +56,15 @@ class Estado:
         sucessores = []
 
         for i, veiculo in enumerate(self.veiculos):
-            # --- 1. RECOLHER ---
-            if not veiculo.ocupado:
+
+            # 1. RECOLHER
+            if not veiculo.ocupado and veiculo.autonomia_atual > 1:
                 for pedido in self.pedidos_pendentes:
                     if veiculo.local == pedido.origem:
-                        # Verificação de Prazo
                         if self.tempo_atual > pedido.prazo:
                             continue
 
-                        # Calcula dist direta
-                        dist_estimada = cidade.get_heuristic(pedido.origem, pedido.destino)
-                        # Se não tiver bateria para a viagem + 10%, não aceita
-                        if veiculo.autonomia_atual < dist_estimada * 1.1:
-                            continue 
-                       
                         ns = self.copia_segura()
-                        
                         ns.alerta = None
                         v_novo = ns.veiculos[i]
 
@@ -85,6 +77,9 @@ class Estado:
 
                         if pedido.prefere_eletrico and veiculo.tipo == "combustao":
                             custo += PENALIDADE_CLIENTE_INSATISFEITO
+
+                        if veiculo.autonomia_atual < (veiculo.autonomia_max * 0.20):
+                            custo += PENALIDADE_RISCO_BATERIA
 
                         ns.custo_acumulado += custo
                         ns.tempo_atual += t_op
@@ -113,12 +108,12 @@ class Estado:
                     ns.acao_geradora = f"[{v_novo.id}] Entregou passageiro em {v_novo.local}"
                     sucessores.append(ns)
 
-            # 3. RECARREGAR
+            # 3. RECARREGAR / ABASTECER
             tipo_loc = cidade.nodes[veiculo.local]['type']
             pode_rec = (veiculo.tipo == "eletrico" and tipo_loc == "recarga") or \
                        (veiculo.tipo == "combustao" and tipo_loc == "combustivel")
 
-            if pode_rec and veiculo.autonomia_atual < veiculo.autonomia_max:
+            if pode_rec and veiculo.autonomia_atual < (veiculo.autonomia_max * 0.8):
                 ns = self.copia_segura()
                 ns.alerta = None
                 v_novo = ns.veiculos[i]
@@ -165,36 +160,18 @@ class Estado:
     def __lt__(self, other):
         return self.custo_acumulado < other.custo_acumulado
 
-    # =========================================================================
-    # --- CORREÇÃO PARA DFS: DISCRETIZAÇÃO DA BATERIA ---
-    # =========================================================================
-    def _assinatura_veiculo(self, v):
-        """
-        Cria uma assinatura simplificada do veículo usando DEGRAUS.
-        """
-        # Agrupa a bateria em blocos de 10km.
-        # Ex: 99km -> 9, 91km -> 9. (Considera igual)
-        # Ex: 89km -> 8. (Considera diferente, permite revisitar se tiver mais carga)
-        nivel_bateria = int(v.autonomia_atual // 10)
-
-        passageiros_ids = tuple(p.id for p in v.passageiros_a_bordo)
-
-        return (v.id, v.local, v.ocupado, nivel_bateria, passageiros_ids)
+    def _get_nivel_bateria(self, veiculo):
+        ratio = veiculo.autonomia_atual / veiculo.autonomia_max
+        if ratio < 0.2: return 0
+        if ratio < 0.8: return 1
+        return 2
 
     def __hash__(self):
-        # Hash baseado na assinatura simplificada
-        v_info = tuple(self._assinatura_veiculo(v) for v in self.veiculos)
+        v_info = tuple((v.id, v.local, v.ocupado, self._get_nivel_bateria(v)) for v in self.veiculos)
+        p_bordo = tuple(tuple(p.id for p in v.passageiros_a_bordo) for v in self.veiculos)
         p_pend = tuple(p.id for p in self.pedidos_pendentes)
-        return hash((v_info, p_pend))
+        return hash((v_info, p_bordo, p_pend))
 
     def __eq__(self, other):
-        # Igualdade baseada na assinatura simplificada
         if not isinstance(other, Estado): return False
-
-        minha_sig = tuple(self._assinatura_veiculo(v) for v in self.veiculos)
-        outra_sig = tuple(other._assinatura_veiculo(v) for v in other.veiculos)
-
-        meus_pends = tuple(p.id for p in self.pedidos_pendentes)
-        outros_pends = tuple(p.id for p in other.pedidos_pendentes)
-
-        return minha_sig == outra_sig and meus_pends == outros_pends
+        return hash(self) == hash(other)

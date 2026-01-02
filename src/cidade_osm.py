@@ -7,13 +7,13 @@ from cidade import Cidade
 class CidadeOSM(Cidade):
     def __init__(self):
         super().__init__()
-        RAIO_MAPA = 750
-        print(f"🌍 A descarregar o Centro de Braga (Raio {RAIO_MAPA}m)...")
+        RAIO_MAPA = 700
+        print(f" A descarregar o Centro de Braga (Raio {RAIO_MAPA}m)...")
 
         point = (41.55032, -8.42005)
         self.G = ox.graph_from_point(point, dist=RAIO_MAPA, network_type="drive")
 
-        print("🔧 A limpar nós isolados do mapa...")
+        print(" A limpar nós isolados do mapa...")
         try:
             self.G = ox.truncate.largest_component(self.G, strongly=True)
         except AttributeError:
@@ -24,7 +24,7 @@ class CidadeOSM(Cidade):
                 self.G = self.G.subgraph(largest).copy()
 
         self.G = ox.project_graph(self.G)
-        print(f"✅ Mapa carregado e limpo: {len(self.G.nodes)} nós.")
+        print(f" Mapa carregado e limpo: {len(self.G.nodes)} nós.")
 
         self._converter_mapa()
         self._definir_pois()

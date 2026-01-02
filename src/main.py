@@ -22,14 +22,14 @@ COR_BOTOES = '#EFEFEF'
 
 def imprimir_relatorio_estatico(estado_final, nome_algoritmo, tempo_execucao):
     print("\n" + "=" * 50)
-    print(f"📊 RELATÓRIO DA SOLUÇÃO ({nome_algoritmo})")
+    print(f"RELATORIO DA SOLUCAO ({nome_algoritmo})")
     print("=" * 50)
-    print(f"🧠 Tempo de Cálculo (CPU): {tempo_execucao:.4f} segundos")
+    print(f"Tempo de Calculo (CPU): {tempo_execucao:.4f} segundos")
     print("-" * 50)
-    print(f"💰 Custo da Função Objetivo: {estado_final.custo_acumulado:.2f}")
-    print(f"⏱️  Tempo Total da Operação:  {estado_final.tempo_atual:.1f} minutos")
-    print(f"💵 Custo Monetário Real:     {estado_final.total_dinheiro:.2f} €")
-    print(f"🌍 Emissões Totais de CO2:   {estado_final.total_co2:.1f} g")
+    print(f"Custo da Funcao Objetivo: {estado_final.custo_acumulado:.2f}")
+    print(f"Tempo Total da Operacao:  {estado_final.tempo_atual:.1f} minutos")
+    print(f"Custo Monetario Real:     {estado_final.total_dinheiro:.2f} EUR")
+    print(f"Emissoes Totais de CO2:   {estado_final.total_co2:.1f} g")
     print("=" * 50 + "\n")
 
 
@@ -61,7 +61,6 @@ class VisualizadorInterativo:
 
         self._desenhar_estaticos()
 
-        # [NOVO] Dois scatters: um para normal (amarelo), outro para eco (verde)
         self.origem_scatter = self.ax.scatter([], [], c='#FFD700', marker='*', s=300, zorder=6, edgecolors='gray',
                                               linewidth=0.5)
         self.origem_scatter_eco = self.ax.scatter([], [], c='#00E676', marker='*', s=350, zorder=7, edgecolors='black',
@@ -94,12 +93,13 @@ class VisualizadorInterativo:
             Line2D([0], [0], marker='s', color='w', markerfacecolor='#555555', label='[G] Garagem', markersize=8),
             Line2D([0], [0], marker='s', color='w', markerfacecolor='#FFD180', label='[B] Bombas', markersize=8),
             Line2D([0], [0], marker='s', color='w', markerfacecolor='#64B5F6', label='[C] Carregador', markersize=8),
-            Line2D([0], [0], marker='o', color='w', markerfacecolor='#66BB6A', label='(E) Elétrico', markersize=8),
-            Line2D([0], [0], marker='o', color='w', markerfacecolor='#42A5F5', label='(C) Combustão', markersize=8),
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='#66BB6A', label='(E) Eletrico', markersize=8),
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='#42A5F5', label='(C) Combustao', markersize=8),
             Line2D([0], [0], marker='o', color='w', markerfacecolor='#EF5350', label='(Ocupado)', markersize=8),
-            Line2D([0], [0], color='red', lw=2, label='TRÂNSITO', markersize=8),
+            Line2D([0], [0], color='red', lw=2, label='TRANSITO', markersize=8),
             Line2D([0], [0], marker='*', color='w', markerfacecolor='#FFD700', label='Cliente Normal', markersize=10),
-            Line2D([0], [0], marker='*', color='w', markerfacecolor='#00E676', label='Cliente ECO (Verde)', markersize=10),
+            Line2D([0], [0], marker='*', color='w', markerfacecolor='#00E676', label='Cliente ECO',
+                   markersize=10),
             Line2D([0], [0], marker='X', color='w', markerfacecolor='#9C27B0', label='Destino', markersize=8),
         ]
         leg = self.ax.legend(handles=legend_elements, loc='upper left', bbox_to_anchor=(1.0, 1), borderaxespad=0.,
@@ -162,7 +162,6 @@ class VisualizadorInterativo:
         else:
             self.linhas_transito.set_segments([])
 
-        # [NOVO] Separar pedidos normais de pedidos ECO
         ox_list_norm, oy_list_norm = [], []
         ox_list_eco, oy_list_eco = [], []
         dx_list, dy_list = [], []
@@ -225,14 +224,22 @@ def animar_mapa_osmnx(cidade_osm, caminho_estados, titulo_alg):
 
 
 def gerar_cenario_demo(cidade):
-    frota = [Veiculo(1, "eletrico", cidade.garagem, 50, 4),
-             Veiculo(2, "combustao", cidade.get_local_aleatorio(), 600, 4)]
+    v1 = Veiculo(1, "eletrico", cidade.garagem, 20, 4)
+    v1.autonomia_max = 200
+
+    local_v2 = cidade.get_local_aleatorio()
+    v2 = Veiculo(2, "combustao", local_v2, 30, 4)
+    v2.autonomia_max = 600
+
+    frota = [v1, v2]
     pedidos = []
     for i in range(2):
-        origem = cidade.get_local_aleatorio();
+        origem = cidade.get_local_aleatorio()
         destino = cidade.get_local_aleatorio()
         while destino == origem: destino = cidade.get_local_aleatorio()
-        pedidos.append(Pedido(100 + i, origem, destino, 1, 60))
+
+        pedidos.append(Pedido(100 + i, origem, destino, 1, 120))
+
     return Estado(frota, pedidos)
 
 
@@ -240,7 +247,9 @@ def gerar_frota_simulacao(cidade, num_veiculos):
     frota = []
     for i in range(1, num_veiculos + 1):
         if i == 1:
-            tipo = "eletrico"; local = cidade.garagem; autonomia = 200
+            tipo = "eletrico";
+            local = cidade.garagem;
+            autonomia = 200
         else:
             tipo = "eletrico" if i % 2 != 0 else "combustao"
             local = cidade.get_local_aleatorio()
@@ -250,30 +259,31 @@ def gerar_frota_simulacao(cidade, num_veiculos):
 
 
 def main():
-    print("🌍 A carregar OSMnx (Braga)... Por favor aguarde.")
+    print("A carregar Mapa OSMnx (Braga)... Por favor aguarde.")
     try:
         cidade = CidadeOSM()
     except Exception as e:
-        print(f"Erro ao carregar mapa: {e}"); return
+        print(f"Erro ao carregar mapa: {e}");
+        return
     estado_demo = gerar_cenario_demo(cidade)
-    print("\n✅ Cenário de demonstração inicial gerado!")
+    print("\nCenario de demonstracao inicial gerado!")
 
     while True:
         print("\n" + "=" * 55)
-        print(" 🚖 TAXIGREEN - SISTEMA INTELIGENTE DE TRANSPORTE")
+        print(" TAXIGREEN - SISTEMA INTELIGENTE DE TRANSPORTE")
         print("=" * 55)
-        print("--- DEMONSTRAÇÃO VISUAL (Estática) ---")
+        print("--- DEMONSTRACAO VISUAL (Estatica) ---")
         print("1. Visualizar A*")
         print("2. Visualizar Greedy")
         print("3. Visualizar BFS")
         print("4. Visualizar DFS")
-        print("5. 🎲 Gerar Novo Cenário Demo")
+        print("5. Gerar Novo Cenario Demo")
         print("-" * 35)
-        print("--- SIMULAÇÃO DE PERFORMANCE (Tempo Fixo) ---")
-        print("6. ⏱️  Executar Benchmark (Limite: Segundos Reais)")
+        print("--- SIMULACAO DE PERFORMANCE (Tempo Fixo) ---")
+        print("6. Executar Simulacao Realista")
         print("-" * 35)
         print("0. Sair")
-        opcao = input("👉 Escolha uma opção: ")
+        opcao = input(">>> Escolha uma opcao: ")
 
         if opcao == "0": break
 
@@ -286,7 +296,7 @@ def main():
 
         if opcao in alg_map:
             nome, func, extra = alg_map[opcao]
-            print(f"\n🧠 A calcular rota com {nome} (no cenário atual)...")
+            print(f"\nA calcular rota com {nome} (no cenario atual)...")
             start_time = time.time()
             args = (estado_demo, cidade, extra) if extra else (estado_demo, cidade)
             res = func(*args)
@@ -294,34 +304,39 @@ def main():
             if res:
                 caminho, custo_final = res
                 imprimir_relatorio_estatico(caminho[-1], nome, end_time - start_time)
-                input("⚠️  ENTER para abrir gráfico (Feche a janela para voltar)...")
-                animar_mapa_osmnx(cidade, caminho, nome)
+
+                if input("\nVisualizar Animacao? (s/n): ").lower() == 's':
+                    print("A abrir grafico...")
+                    animar_mapa_osmnx(cidade, caminho, nome)
             else:
-                print("❌ Sem solução.")
+                print("[!]Sem solucao.")
 
         elif opcao == "5":
             estado_demo = gerar_cenario_demo(cidade);
-            print("\n✅ NOVO CENÁRIO GERADO!")
+            print("\nNOVO CENARIO GERADO!")
 
         elif opcao == "6":
-            print("\n🚀 Configuração do Benchmark:")
-            print("   [1] A* (Recomendado)")
-            print("   [2] Greedy (Recomendado)")
-            print("   [3] BFS (⚠️ LENTO)")
-            print("   [4] DFS (⚠️ LENTO)")
-            alg_input = input("   Escolha o algoritmo [Default: Greedy]: ")
+            print("\n Configuração da Simulação:")
+            print("   [1] A*")
+            print("   [2] Greedy")
+            print("   [3] BFS")
+            print("   [4] DFS")
+            alg_input = input(">>> Escolha o algoritmo [Default: Greedy]: ")
             algoritmo_func = algoritmos.greedy;
             nome_alg = "Greedy"
             if alg_input == "1":
-                algoritmo_func = algoritmos.a_star; nome_alg = "A*"
+                algoritmo_func = algoritmos.a_star;
+                nome_alg = "A*"
             elif alg_input == "3":
-                algoritmo_func = algoritmos.bfs; nome_alg = "BFS"
+                algoritmo_func = algoritmos.bfs;
+                nome_alg = "BFS"
             elif alg_input == "4":
-                algoritmo_func = algoritmos.dfs; nome_alg = "DFS"
+                algoritmo_func = algoritmos.dfs;
+                nome_alg = "DFS"
 
             num_veiculos = 2
             try:
-                segundos = int(input("   ⏱️  Tempo Limite (Segundos Reais) [Default: 20]: ") or "20")
+                segundos = int(input(">>> Escolha Tempo Limite (Segundos Reais) [Default: 20s]: ") or "20")
             except:
                 segundos = 60
 
@@ -329,14 +344,22 @@ def main():
             frota_sim = gerar_frota_simulacao(cidade, num_veiculos)
             sim = Simulador(cidade, frota_sim, algoritmo_escolhido=algoritmo_func)
 
-            print(f"\n⚡ A iniciar Benchmark: {segundos}s reais | {num_veiculos} táxis | {nome_alg}...")
+            origem_inicial = cidade.get_local_aleatorio()
+            destino_inicial = cidade.get_local_aleatorio()
+            while destino_inicial == origem_inicial:
+                destino_inicial = cidade.get_local_aleatorio()
+
+            sim.pedidos_pendentes.append(Pedido(99, origem_inicial, destino_inicial, 1, 120))
+
+
+            print(f"\n A iniciar Simulação: {segundos}s reais | {num_veiculos} taxis | {nome_alg}...")
             historico = sim.executar_simulacao(segundos_reais_limite=segundos, probabilidade_pedido=PROB_PEDIDO_FIXA)
 
-            if input("\n🎬 Visualizar Replay? (s/n): ").lower() == 's':
-                print("⚠️  ENTER para abrir gráfico...")
+            if input("\nVisualizar Replay? (s/n): ").lower() == 's':
+                print("A abrir grafico...")
                 animar_mapa_osmnx(cidade, historico, f"Replay ({nome_alg} - {segundos}s)")
         else:
-            print("Opção inválida.")
+            print("Opcao invalida.")
 
 
 if __name__ == "__main__": main()

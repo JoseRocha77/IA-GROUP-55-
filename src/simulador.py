@@ -28,8 +28,6 @@ class Simulador:
         self.km_total_ocupado = 0.0
 
     def executar_simulacao(self, segundos_reais_limite, probabilidade_pedido=0.1):
-        print(f"⏱️  INICIAR SIMULAÇÃO (Limite: {segundos_reais_limite}s)...")
-        print("    (A usar THREADS e Clientes ECO 🌿)")
 
         start_real_global = time.time()
         deadline = start_real_global + segundos_reais_limite
@@ -40,20 +38,17 @@ class Simulador:
             self.tempo_atual += 1
             alerta_visual = ""
 
-            # 1. Simular Trânsito
             if random.random() < 0.05 and hasattr(self.cidade, 'simular_transito_dinamico'):
                 self.cidade.simular_transito_dinamico()
-                alerta_visual = "[!] TRANSITO ALTERADO"
+                alerta_visual = "[TRANSITO ALTERADO]"
 
-            # 2. Gerar Pedidos
             self._gerar_novos_eventos(probabilidade_pedido)
 
-            # 3. Prazos
             falhados_agora = self._verificar_prazos()
             if falhados_agora:
                 ids = ", ".join([str(p.id) for p in falhados_agora])
                 if alerta_visual: alerta_visual += " | "
-                alerta_visual += f" [X] FALHOU PEDIDO: {ids}"
+                alerta_visual += f" [FALHOU PEDIDO: {ids}]"
 
             self._atualizar_frota()
 
@@ -65,7 +60,7 @@ class Simulador:
             self._gravar_snapshot(alerta_extra=alerta_visual)
 
         tempo_total_corrido = time.time() - start_real_global
-        print(f"\n🛑 FIM DO TEMPO (Passaram {tempo_total_corrido:.2f}s).")
+        print(f"\nFIM DO TEMPO (Passaram {tempo_total_corrido:.2f}s).")
         self._imprimir_estatisticas(tempo_total_corrido)
         return self.historico_estados
 
@@ -165,24 +160,25 @@ class Simulador:
                 self.km_total_vazio += diff
         elif diff < 0:
             self.total_dinheiro_gasto += abs(diff) * 0.10
-        v_real.local = v_sim.local;
+
+        v_real.local = v_sim.local
         v_real.autonomia_atual = v_sim.autonomia_atual
 
         if v_sim.passageiros_a_bordo and not v_real.passageiros_a_bordo:
             pid = v_sim.passageiros_a_bordo[0].id
             preal = next((p for p in self.pedidos_pendentes if p.id == pid), None)
             if preal:
-                v_real.ocupado = True;
+                v_real.ocupado = True
                 v_real.passageiros_a_bordo.append(preal)
-                self.pedidos_pendentes.remove(preal);
+                self.pedidos_pendentes.remove(preal)
                 self.pedidos_ativos.append(preal)
                 self.total_dinheiro_gasto += 0.50
         elif not v_sim.passageiros_a_bordo and v_real.passageiros_a_bordo:
             preal = v_real.passageiros_a_bordo[0]
-            v_real.ocupado = False;
+            v_real.ocupado = False
             v_real.passageiros_a_bordo = []
             if preal in self.pedidos_ativos: self.pedidos_ativos.remove(preal)
-            preal.tempo_conclusao = self.tempo_atual;
+            preal.tempo_conclusao = self.tempo_atual
             self.pedidos_concluidos.append(preal)
 
     def _imprimir_estatisticas(self, tempo_real_execucao):
@@ -192,31 +188,30 @@ class Simulador:
         km_totais = self.km_total_ocupado + self.km_total_vazio
         taxa_ocupacao = (self.km_total_ocupado / km_totais * 100) if km_totais > 0 else 0
         sim_speed = self.tempo_atual / (tempo_real_execucao + 0.001)
-        
-        
-        pedidos_eco = sum(1 for p in self.pedidos_concluidos if getattr(p, 'veiculo_eco', False))
 
-        print(f"📊 RESULTADOS (Threaded Benchmark)")
-        print(f"⏱️  Tempo Decorrido:    {tempo_real_execucao:.2f}s")
-        print(f"⚡ Minutos Simulados:  {self.tempo_atual} min")
-        print(f"🚀 Velocidade:         {sim_speed:.1f} min/s")
-        print(f"💵 Custo Total:        {self.total_dinheiro_gasto:.2f} €")
-        
-        print(f"📦 Pedidos: {total}")
-        print(f"   ✅ Concluídos:      {len(self.pedidos_concluidos)}")
-        print(f"   ❌ Falhados:        {len(self.pedidos_falhados)}")
-        
-        print(f"   🚕 Em Curso:        {len(self.pedidos_ativos)}")
-        print(f"   ⏳ Pendentes:       {len(self.pedidos_pendentes)}")
-        
-        print(f"   🌿 Pedidos Eco:     {pedidos_eco}")
+        pedidos_eco = sum(1 for p in self.pedidos_concluidos if p.prefere_eletrico)
+
+        print(f"RESULTADOS (Threaded Benchmark)")
+        print(f"Tempo Decorrido:    {tempo_real_execucao:.2f}s")
+        print(f"Minutos Simulados:  {self.tempo_atual} min")
+        print(f"Velocidade:         {sim_speed:.1f} min/s")
+        print(f"Custo Total:        {self.total_dinheiro_gasto:.2f} EUR")
+
+        print(f"Pedidos: {total}")
+        print(f"   Concluidos:      {len(self.pedidos_concluidos)}")
+        print(f"   Falhados:        {len(self.pedidos_falhados)}")
+
+        print(f"   Em Curso:        {len(self.pedidos_ativos)}")
+        print(f"   Pendentes:       {len(self.pedidos_pendentes)}")
+
+        print(f"   Pedidos Eco:     {pedidos_eco}")
         print("-" * 30)
-        
-        print(f"📉 Km em Vazio:        {self.km_total_vazio:.1f} km")
-        print(f"📈 Km com Cliente:     {self.km_total_ocupado:.1f} km")
-        print(f"🚕 Taxa Eficiência:    {taxa_ocupacao:.1f}%")
+
+        print(f"Km em Vazio:        {self.km_total_vazio:.1f} km")
+        print(f"Km com Cliente:     {self.km_total_ocupado:.1f} km")
+        print(f"Taxa Eficiencia:    {taxa_ocupacao:.1f}%")
 
         if self.pedidos_concluidos:
             tempos = [p.get_tempo_espera() for p in self.pedidos_concluidos]
-            print(f"🕒 Tempo Espera Médio: {sum(tempos) / len(tempos):.1f} min")
+            print(f"Tempo Espera Medio: {sum(tempos) / len(tempos):.1f} min")
         print("=" * 50)
